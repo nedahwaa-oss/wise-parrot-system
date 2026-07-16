@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WiseBot AI — Wise Parrot Junior School</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700;900&family=Montserrat:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+  import { getFirestore, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+  const firebaseConfig = {
+    apiKey: "AIzaSyDz7jFSvJ2RXs9vDh6gLtgLeHH-IJDTmC4",
+    authDomain: "wise-parrot-junior-school.firebaseapp.com",
+    databaseURL: "https://wise-parrot-junior-school-default-rtdb.europe-west1.firebasedatabase.app",
+    projectId: "wise-parrot-junior-school",
+    storageBucket: "wise-parrot-junior-school.firebasestorage.app",
+    messagingSenderId: "696377844233",
+    appId: "1:696377844233:web:7f86b209c99ec454224ed8"
+  };
+  try {
+    const app = initializeApp(firebaseConfig);
+    window._wbDB = getFirestore(app);
+    window._wbFns = { collection, addDoc, serverTimestamp };
+  } catch(e) { console.warn("WiseBot: Firebase not configured:", e.message); }
+</script>
+
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+html, body { width:100%; height:100%; overflow:hidden; background:#050812; }
+body { font-family:'Montserrat',sans-serif; color:#EAF0FF; }
+
+#scene-wrap { position:fixed; inset:0; }
+#scene-wrap canvas { display:block; width:100% !important; height:100% !important; }
+
+/* ---- minimal brand mark, top-left ---- */
+#brand {
+  position:fixed; top:26px; left:30px; z-index:5; pointer-events:none;
+  opacity:0.85;
+}
+#brand .name { font-family:'Playfair Display',serif; font-weight:700; font-size:15px; color:#E8C75E; letter-spacing:0.3px; }
+#brand .sub { font-size:9px; letter-spacing:3px; text-transform:uppercase; color:#7f8bb8; margin-top:2px; }
+
+/* ---- status, top-right ---- */
+#status {
+  position:fixed; top:28px; right:30px; z-index:5;
+  display:flex; align-items:center; gap:8px; font-size:11px; color:#7f8bb8;
+  letter-spacing:0.5px;
+}
+#status-dot { width:7px; height:7px; border-radius:50%; background:#5a6690; transition:background .3s, box-shadow .3s; }
+#status-dot.ambient { background:#4cc0e8; box-shadow:0 0 8px #4cc0e8; animation:pulse 2.6s ease infinite; }
+#status-dot.listening { background:#4cc0e8; box-shadow:0 0 10px #4cc0e8; animation:pulse 1s ease infinite; }
+#status-dot.thinking { background:#E8C75E; box-shadow:0 0 10px #E8C75E; animation:pulse .6s ease infinite; }
+#status-dot.talking { background:#5fe0a0; box-shadow:0 0 10px #5fe0a0; animation:pulse .45s ease infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+/* ---- caption / subtitle ---- */
+#caption-wrap {
+  position:fixed; left:50%; bottom:9%; transform:translateX(-50%); z-index:5;
+  width:min(720px, 86vw); text-align:center; pointer-events:none;
+}
+#wb-name { font-family:'Playfair Display',serif; font-weight:700; font-size:22px; color:#E8C75E; text-shadow:0 0 20px rgba(232,199,94,0.45); margin-bottom:10px; }
+#caption { font-size:16px; line-height:1.5; color:#dfe6ff; min-height:24px; opacity:0; transition:opacity .35s; }
+#caption.show { opacity:1; }
+
+/* ---- waveform bars ---- */
+#wave { display:flex; align-items:flex-end; justify-content:center; gap:4px; height:34px; margin-top:16px; }
+#wave div { width:4px; border-radius:3px; background:linear-gradient(180deg,#4cc0e8,#C9A227); opacity:0.85; height:4px; transition:height .09s ease; }
+
+/* ---- mic mute toggle, bottom-right, unobtrusive ---- */
+#mute-btn {
+  position:fixed; bottom:26px; right:30px; z-index:6;
+  width:42px; height:42px; border-radius:50%; border:1px solid rgba(232,199,94,0.25);
+  background:rgba(255,255,255,0.04); color:#7f8bb8; cursor:pointer; font-size:15px;
+  display:flex; align-items:center; justify-content:center; backdrop-filter:blur(6px);
+}
+#mute-btn.off { border-color:rgba(231,76,60,0.5); color:#e77; }
+
+/* ---- activation overlay ---- */
+#activate {
+  position:fixed; inset:0; z-index:50; background:radial-gradient(ellipse at 50% 40%, #101a3d 0%, #050812 70%);
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:22px;
+  cursor:pointer; text-align:center; padding:0 24px;
+}
+#activate .orb {
+  width:86px; height:86px; border-radius:50%;
+  background:radial-gradient(circle at 35% 30%, #6fe0ff, #1ca7d4 55%, #0c3a4d 100%);
+  box-shadow:0 0 50px rgba(76,192,232,0.55), 0 0 110px rgba(201,162,39,0.25);
+  animation:orbPulse 2.4s ease-in-out infinite;
+}
+@keyframes orbPulse { 0%,100%{ transform:scale(1); } 50%{ transform:scale(1.08); } }
+#activate h1 { font-family:'Playfair Display',serif; font-size:26px; color:#E8C75E; font-weight:700; }
+#activate p { font-size:13px; color:#8b96c4; max-width:380px; line-height:1.6; }
+#activate .tap { font-size:11px; letter-spacing:2px; text-transform:uppercase; color:#4cc0e8; margin-top:6px; }
+
+/* ---- permission / error banner ---- */
+#perm-banner {
+  display:none; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); z-index:60;
+  background:rgba(15,10,10,0.92); border:1px solid rgba(231,76,60,0.45); color:#ffd8d3;
+  font-size:13px; line-height:1.7; padding:26px 30px; border-radius:14px; max-width:min(460px,86vw); text-align:left;
+}
+#perm-banner h3 { color:#ff8f85; font-size:14px; margin-bottom:10px; }
+#perm-banner code { background:rgba(255,255,255,0.08); padding:1px 6px; border-radius:4px; font-size:12px; }
+#perm-banner .close { display:inline-block; margin-top:14px; font-size:11px; letter-spacing:1px; text-transform:uppercase; color:#4cc0e8; cursor:pointer; }
+</style>
+</head>
+<body>
+
+<div id="scene-wrap"></div>
+
+<div id="brand">
+  <div class="name">Wise Parrot Junior School</div>
+  <div class="sub">WiseBot AI Classroom</div>
+</div>
+
+<div id="status"><div id="status-dot"></div><span id="status-label">Sleeping</span></div>
+
+<div id="caption-wrap">
+  <div id="wb-name">WiseBot</div>
+  <div id="caption"></div>
+  <div id="wave"></div>
+</div>
+
+<button id="mute-btn" title="Mute microphone"><i>🎙</i></button>
+
+<div id="activate">
+  <div class="orb"></div>
+  <h1>WiseBot AI</h1>
+  <p>An always-listening AI teacher for Wise Parrot Junior School. Tap anywhere to wake it up and grant microphone access — after that, everything happens by voice.</p>
+  <div class="tap">Tap to begin</div>
+</div>
+
+<div id="perm-banner">
+  <h3>Microphone unavailable</h3>
+  <div id="perm-text"></div>
+  <div class="close" id="perm-close">Dismiss</div>
+</div>
+
+<script>
+// ============================================================
+// WAVEFORM BARS
+// ============================================================
+const waveEl = document.getElementById('wave');
+const BAR_COUNT = 28;
+const bars = [];
+for (let i=0;i<BAR_COUNT;i++){
+  const b = document.createElement('div');
+  waveEl.appendChild(b);
+  bars.push(b);
+}
+function animateBars(mode){ // 'idle' | 'listening' | 'thinking' | 'talking'
+  bars.forEach((b,i)=>{
+    let h = 4;
+    if (mode==='listening') h = 4 + Math.abs(Math.sin(Date.now()/180 + i*0.5))*14;
+    else if (mode==='thinking') h = 4 + ((Math.sin(Date.now()/260 + i))+1)*5;
+    else if (mode==='talking') h = 4 + Math.abs(Math.sin(Date.now()/95 + i*0.8))*26 * (0.5+Math.random()*0.5);
+    b.style.height = h.toFixed(1) + 'px';
+  });
+}
+
+// ============================================================
+// STATUS + CAPTION HELPERS
+// ============================================================
+const statusDot = document.getElementById('status-dot');
+const statusLabel = document.getElementById('status-label');
+const captionEl = document.getElementById('caption');
+let robotState = 'idle'; // idle | ambient | listening | thinking | talking
+let isAwake = false;
+
+function setState(state){
+  robotState = state;
+  statusDot.className = '';
+  if (state==='ambient') { statusDot.classList.add('ambient'); statusLabel.textContent='Waiting for "Hey WiseBot"'; }
+  else if (state==='listening') { statusDot.classList.add('listening'); statusLabel.textContent='Listening'; }
+  else if (state==='thinking') { statusDot.classList.add('thinking'); statusLabel.textContent='Thinking'; }
+  else if (state==='talking') { statusDot.classList.add('talking'); statusLabel.textContent='Speaking'; }
+  else { statusLabel.textContent = isAwake ? 'Idle' : 'Sleeping'; }
+}
+function showCaption(text){
+  captionEl.textContent = text;
+  captionEl.classList.add('show');
+}
+function clearCaptionSoon(delay=5000){
+  clearTimeout(window._capT);
+  window._capT = setTimeout(()=>captionEl.classList.remove('show'), delay);
+}
+
+// ============================================================
+// THREE.JS — HOLOGRAPHIC AI BEING
+// (deliberately not a rigid plastic-toy robot: a glowing energy
+//  figure reads as premium and futuristic, and is achievable
+//  believably with primitives + emissive/transparent materials —
+//  a literal detailed humanoid robot is not, in a single file)
+// ============================================================
+const wrap = document.getElementById('scene-wrap');
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(38, window.innerWidth/window.innerHeight, 0.1, 100);
+camera.position.set(0, 1.35, 4.4);
+const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+wrap.appendChild(renderer.domElement);
+
+scene.add(new THREE.AmbientLight(0x3a4a8a, 0.55));
+const key = new THREE.PointLight(0x4cc0e8, 1.6, 16); key.position.set(1.5,2.5,3); scene.add(key);
+const rim = new THREE.PointLight(0xC9A227, 1.3, 16); rim.position.set(-2,1.8,-1.5); scene.add(rim);
+
+// soft round particle texture (generated at runtime, no external asset)
+function makeParticleTexture(){
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const ctx = c.getContext('2d');
+  const g = ctx.createRadialGradient(32,32,0,32,32,32);
+  g.addColorStop(0,'rgba(255,255,255,1)');
+  g.addColorStop(0.4,'rgba(180,220,255,0.5)');
+  g.addColorStop(1,'rgba(180,220,255,0)');
+  ctx.fillStyle = g; ctx.fillRect(0,0,64,64);
+  return new THREE.CanvasTexture(c);
+}
+const particleTex = makeParticleTexture();
+
+// ambient particle field around the being
+const PCOUNT = 420;
+const pPos = new Float32Array(PCOUNT*3);
+for (let i=0;i<PCOUNT;i++){
+  const r = 1.4 + Math.random()*2.2;
+  const theta = Math.random()*Math.PI*2;
+  const phi = Math.acos((Math.random()*2)-1);
+  pPos[i*3]   = r*Math.sin(phi)*Math.cos(theta);
+  pPos[i*3+1] = 1.1 + r*Math.cos(phi)*0.6;
+  pPos[i*3+2] = r*Math.sin(phi)*Math.sin(theta);
+}
+const pGeo = new THREE.BufferGeometry();
+pGeo.setAttribute('position', new THREE.BufferAttribute(pPos,3));
+const pMat = new THREE.PointsMaterial({ size:0.045, map:particleTex, transparent:true, opacity:0.55, color:0x8fd9ff, blending:THREE.AdditiveBlending, depthWrite:false });
+const particles = new THREE.Points(pGeo, pMat);
+scene.add(particles);
+
+// glowing base / platform rings (the being "floats" above these)
+function makeRing(radius, tube, color, opacity){
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(radius, tube, 8, 80), new THREE.MeshBasicMaterial({ color, transparent:true, opacity, blending:THREE.AdditiveBlending }));
+  ring.rotation.x = Math.PI/2;
+  scene.add(ring);
+  return ring;
+}
+const ringA = makeRing(1.05, 0.01, 0xC9A227, 0.55); ringA.position.y = 0.02;
+const ringB = makeRing(0.8, 0.006, 0x4cc0e8, 0.4); ringB.position.y = 0.05;
+const floorGlow = new THREE.Mesh(new THREE.CircleGeometry(1.3,64), new THREE.MeshBasicMaterial({ color:0x1ca7d4, transparent:true, opacity:0.07 }));
+floorGlow.rotation.x = -Math.PI/2; floorGlow.position.y = 0.01;
+scene.add(floorGlow);
+
+// ---- the being itself ----
+const bodyGlass = new THREE.MeshPhysicalMaterial({ color:0x1ca7d4, transparent:true, opacity:0.5, emissive:0x0b3b4d, emissiveIntensity:0.5, metalness:0.1, roughness:0.15, clearcoat:0.6 });
+const coreGlow  = new THREE.MeshStandardMaterial({ color:0xffe9b0, emissive:0xC9A227, emissiveIntensity:1.4, metalness:0.2, roughness:0.25 });
+const ledMat    = new THREE.MeshBasicMaterial({ color:0xdff6ff });
+
+const being = new THREE.Group();
+being.position.y = 0.05;
+scene.add(being);
+
+// torso — tapers down and fades toward a particle base rather than legs
+const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.34,0.22,0.95,24,1,true), bodyGlass);
+torso.position.y = 1.0;
+being.add(torso);
+const torsoGlow = new THREE.Mesh(new THREE.CylinderGeometry(0.37,0.24,0.95,24,1,true), new THREE.MeshBasicMaterial({ color:0x4cc0e8, transparent:true, opacity:0.18, side:THREE.BackSide, blending:THREE.AdditiveBlending }));
+torsoGlow.position.y = 1.0;
+being.add(torsoGlow);
+
+const core = new THREE.Mesh(new THREE.SphereGeometry(0.075,20,20), coreGlow);
+core.position.set(0,1.18,0.24);
+being.add(core);
+
+const shoulderCap = new THREE.Mesh(new THREE.SphereGeometry(0.34,20,14,0,Math.PI*2,0,Math.PI/2), bodyGlass);
+shoulderCap.position.y = 1.46;
+being.add(shoulderCap);
+
+// head group
+const headGroup = new THREE.Group();
+headGroup.position.y = 1.62;
+being.add(headGroup);
+
+const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.09,0.11,0.13,16), bodyGlass);
+neck.position.y = 0.05;
+headGroup.add(neck);
+
+const head = new THREE.Mesh(new THREE.SphereGeometry(0.27,28,28), bodyGlass);
+head.position.y = 0.32;
+headGroup.add(head);
+const headGlowShell = new THREE.Mesh(new THREE.SphereGeometry(0.29,28,28), new THREE.MeshBasicMaterial({ color:0x4cc0e8, transparent:true, opacity:0.2, side:THREE.BackSide, blending:THREE.AdditiveBlending }));
+headGlowShell.position.y = 0.32;
+headGroup.add(headGlowShell);
+
+// glowing dot-matrix eyes on the head
+function makeDotEye(x){
+  const grp = new THREE.Group();
+  for (let r=0;r<2;r++) for (let c=0;c<3;c++){
+    const dot = new THREE.Mesh(new THREE.SphereGeometry(0.013,8,8), ledMat);
+    dot.position.set((c-1)*0.038, 0.34 - r*0.038, 0.245);
+    grp.add(dot);
+  }
+  grp.position.x = x;
+  headGroup.add(grp);
+  return grp;
+}
+const eyeL = makeDotEye(-0.095), eyeR = makeDotEye(0.095);
+function makeLid(x){
+  const lid = new THREE.Mesh(new THREE.PlaneGeometry(0.11,0.001), new THREE.MeshBasicMaterial({ color:0x081018, transparent:true, opacity:0.95 }));
+  lid.position.set(x,0.34,0.25);
+  headGroup.add(lid);
+  return lid;
+}
+const lidL = makeLid(-0.095), lidR = makeLid(0.095);
+
+const mouthDots = [];
+for (let i=0;i<5;i++){
+  const dot = new THREE.Mesh(new THREE.SphereGeometry(0.014,8,8), ledMat);
+  dot.position.set((i-2)*0.038, 0.2, 0.25);
+  headGroup.add(dot);
+  mouthDots.push(dot);
+}
+
+// arms — slim glassy glowing limbs
+function makeArm(side){
+  const shoulder = new THREE.Group();
+  shoulder.position.set(side*0.4, 1.42, 0);
+  const upper = new THREE.Mesh(new THREE.CylinderGeometry(0.055,0.05,0.32,14), bodyGlass);
+  upper.position.y = -0.17;
+  shoulder.add(upper);
+  const elbow = new THREE.Group(); elbow.position.y = -0.34; shoulder.add(elbow);
+  const elbowCap = new THREE.Mesh(new THREE.SphereGeometry(0.052,12,12), coreGlow);
+  elbow.add(elbowCap);
+  const lower = new THREE.Mesh(new THREE.CylinderGeometry(0.043,0.038,0.3,14), bodyGlass);
+  lower.position.y = -0.16;
+  elbow.add(lower);
+  const hand = new THREE.Mesh(new THREE.SphereGeometry(0.055,14,14), coreGlow);
+  hand.position.y = -0.32;
+  elbow.add(hand);
+  being.add(shoulder);
+  return { shoulder, elbow };
+}
+const armL = makeArm(-1), armR = makeArm(1);
+armL.shoulder.rotation.z = 0.14; armR.shoulder.rotation.z = -0.14;
+
+// ============================================================
+// ANIMATION LOOP
+// ============================================================
+let t = 0, nextBlink = 2+Math.random()*3, talkPhase = 0, waveActive = false;
+function animate(){
+  requestAnimationFrame(animate);
+  const dt = 0.016; t += dt;
+
+  particles.rotation.y += 0.0009;
+  ringA.rotation.z += 0.0015;
+  ringB.rotation.z -= 0.002;
+
+  being.position.y = 0.05 + Math.sin(t*(isAwake?0.9:0.4))*(isAwake?0.03:0.015);
+  headGroup.rotation.y = Math.sin(t*(isAwake?0.5:0.15))*(isAwake?0.09:0.02);
+  headGroup.rotation.x = Math.sin(t*0.7)*0.03 + (isAwake?0:0.08);
+
+  const restLid = isAwake ? 0.001 : 12;
+  nextBlink -= dt;
+  const blinkT = (nextBlink<0.12 && isAwake) ? (0.12-nextBlink)/0.12 : 0;
+  const blinkAmt = blinkT>0 ? Math.sin(Math.min(blinkT,1)*Math.PI) : 0;
+  lidL.scale.y += ((restLid + blinkAmt*30) - lidL.scale.y)*0.3;
+  lidR.scale.y += ((restLid + blinkAmt*30) - lidR.scale.y)*0.3;
+  if (nextBlink < -0.12) nextBlink = 2+Math.random()*3.5;
+
+  core.scale.setScalar(1 + Math.sin(t*2)*0.08);
+
+  if (waveActive) { /* handled in wave() */ }
+  else if (robotState==='listening' || robotState==='ambient'){
+    armL.shoulder.rotation.x += ((Math.sin(t*1.5)*0.04)-armL.shoulder.rotation.x)*0.08;
+    armR.shoulder.rotation.x += ((Math.sin(t*1.5+1)*0.04)-armR.shoulder.rotation.x)*0.08;
+    mouthDots.forEach(d=>d.scale.set(1,1,1));
+    animateBars(robotState==='ambient' ? 'idle' : 'listening');
+  } else if (robotState==='thinking'){
+    armR.shoulder.rotation.x += (-1.7-armR.shoulder.rotation.x)*0.1;
+    armR.elbow.rotation.x += (-1.2-armR.elbow.rotation.x)*0.1;
+    headGroup.rotation.z += (0.1-headGroup.rotation.z)*0.08;
+    animateBars('thinking');
+  } else if (robotState==='talking'){
+    talkPhase += dt*10;
+    mouthDots.forEach((d,i)=>{ const m = 0.6+Math.abs(Math.sin(talkPhase+i*0.7))*1.6; d.scale.set(1,m,1); });
+    armL.shoulder.rotation.x = Math.sin(t*2)*0.14-0.08;
+    armR.shoulder.rotation.x = Math.sin(t*2+1.4)*0.14-0.08;
+    animateBars('talking');
+  } else {
+    mouthDots.forEach(d=>d.scale.set(1,1,1));
+    armL.shoulder.rotation.x += ((isAwake?Math.sin(t*0.8)*0.04:0.02)-armL.shoulder.rotation.x)*0.05;
+    armR.shoulder.rotation.x += ((isAwake?Math.sin(t*0.8+1)*0.04:0.02)-armR.shoulder.rotation.x)*0.05;
+    armR.elbow.rotation.x += (0-armR.elbow.rotation.x)*0.06;
+    headGroup.rotation.z += (0-headGroup.rotation.z)*0.05;
+    animateBars('idle');
+  }
+
+  renderer.render(scene, camera);
+}
+animate();
+
+function celebrate(){
+  const start = performance.now();
+  (function wiggle(){
+    const el = (performance.now()-start)/1000;
+    if (el>2) return;
+    armL.shoulder.rotation.x = -2.1+Math.sin(el*10)*0.22;
+    armR.shoulder.rotation.x = -2.1+Math.sin(el*10+1)*0.22;
+    requestAnimationFrame(wiggle);
+  })();
+}
+function wave(){
+  waveActive = true;
+  const start = performance.now();
+  (function loop(){
+    const el = (performance.now()-start)/1000;
+    if (el>1.8){ waveActive=false; return; }
+    armR.shoulder.rotation.x = -2.3;
+    armR.shoulder.rotation.z = -0.5 + Math.sin(el*8)*0.3;
+    armL.shoulder.rotation.x += (0.03-armL.shoulder.rotation.x)*0.1;
+    requestAnimationFrame(loop);
+  })();
+}
+
+window.addEventListener('resize', ()=>{
+  camera.aspect = window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// ============================================================
+// WAKE CHIME
+// ============================================================
+function playChime(){
+  try{
+    const ctx = new (window.AudioContext||window.webkitAudioContext)();
+    [880,1174.7].forEach((freq,i)=>{
+      const osc=ctx.createOscillator(), gain=ctx.createGain();
+      osc.type='sine'; osc.frequency.value=freq;
+      gain.gain.setValueAtTime(0.0001, ctx.currentTime+i*0.12);
+      gain.gain.exponentialRampToValueAtTime(0.15, ctx.currentTime+i*0.12+0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime+i*0.12+0.35);
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.start(ctx.currentTime+i*0.12); osc.stop(ctx.currentTime+i*0.12+0.4);
+    });
+  } catch(e){}
+}
+
+// ============================================================
+// VOICE — synthesis
+// ============================================================
+let voices = [];
+function loadVoices(){ voices = speechSynthesis.getVoices(); }
+speechSynthesis.onvoiceschanged = loadVoices;
+loadVoices();
+function speak(text, onDone){
+  if (!('speechSynthesis' in window)) { if(onDone) onDone(); return; }
+  speechSynthesis.cancel();
+  const utter = new SpeechSynthesisUtterance(text);
+  const preferred = voices.find(v=>/^en/.test(v.lang) && /Female/i.test(v.name)) || voices.find(v=>/^en/.test(v.lang));
+  if (preferred) utter.voice = preferred;
+  utter.rate = 0.98; utter.pitch = 1.05;
+  utter.onstart = ()=>{ setState('talking'); showCaption(text); };
+  utter.onend = ()=>{ setState('idle'); clearCaptionSoon(); if(onDone) onDone(); };
+  speechSynthesis.speak(utter);
+}
+
+// ============================================================
+// WAKE WORD + VOICE-ONLY INTERACTION
+// ============================================================
+const SpeechRecognitionImpl = window.SpeechRecognition || window.webkitSpeechRecognition;
+const WAKE_REGEX = /\b(hi|hey|hello|good\s*morning|good\s*afternoon|good\s*evening)\W*wise\W*bot\b/i;
+const statusPill = document.getElementById('status');
+const muteBtn = document.getElementById('mute-btn');
+const activateEl = document.getElementById('activate');
+const permBanner = document.getElementById('perm-banner');
+const permText = document.getElementById('perm-text');
+document.getElementById('perm-close').onclick = ()=> permBanner.style.display='none';
+
+let ambientRecognizer=null, questionRecognizer=null;
+let micEnabled=true, ambientRunning=false, awaitingQuestion=false;
+
+function showPermError(msg){
+  permText.innerHTML = msg;
+  permBanner.style.display = 'block';
+}
+
+function greetingReplyFor(phrase){
+  if (/good\s*morning/i.test(phrase)) return "Good morning to you too! ";
+  if (/good\s*afternoon/i.test(phrase)) return "Good afternoon! ";
+  if (/good\s*evening/i.test(phrase)) return "Good evening! ";
+  return "";
+}
+
+function wakeUp(matchedPhrase, remainder){
+  isAwake = true;
+  playChime();
+  if (remainder && remainder.trim().length>2){
+    speak(greetingReplyFor(matchedPhrase), ()=>sendMessage(remainder.trim()));
+  } else {
+    setState('talking');
+    speak(greetingReplyFor(matchedPhrase)+"Yes? I'm listening.", ()=>startQuestionCapture());
+  }
+}
+
+function startAmbientListening(){
+  if (!SpeechRecognitionImpl || !micEnabled || ambientRunning || awaitingQuestion) return;
+  ambientRecognizer = new SpeechRecognitionImpl();
+  ambientRecognizer.continuous = true;
+  ambientRecognizer.interimResults = true;
+  ambientRecognizer.lang = 'en-US';
+  ambientRecognizer.onstart = ()=>{ ambientRunning=true; setState('ambient'); };
+  ambientRecognizer.onresult = (e)=>{
+    for (let i=e.resultIndex; i<e.results.length; i++){
+      const transcript = e.results[i][0].transcript;
+      const match = transcript.match(WAKE_REGEX);
+      if (match){
+        const remainder = transcript.slice(match.index+match[0].length);
+        try{ ambientRecognizer.stop(); }catch(err){}
+        wakeUp(match[0], remainder);
+        return;
+      }
+    }
+  };
+  ambientRecognizer.onerror = (e)=>{
+    ambientRunning=false;
+    if (e.error==='not-allowed' || e.error==='service-not-allowed'){
+      micEnabled=false;
+      showPermError('Microphone access is blocked for this page.<br><br>This almost always means the page was opened directly as a file, or over a non-secure connection. Voice needs the page served over <code>https://</code> (or <code>localhost</code>) with microphone permission allowed in your browser.');
+    } else if (e.error === 'no-speech') {
+      // benign — just restart
+    }
+  };
+  ambientRecognizer.onend = ()=>{
+    ambientRunning=false;
+    if (micEnabled && !awaitingQuestion) setTimeout(startAmbientListening, 400);
+  };
+  try{ ambientRecognizer.start(); }catch(e){}
+}
+
+function startQuestionCapture(){
+  if (!SpeechRecognitionImpl) return;
+  awaitingQuestion = true;
+  questionRecognizer = new SpeechRecognitionImpl();
+  questionRecognizer.continuous = false;
+  questionRecognizer.interimResults = true;
+  questionRecognizer.lang = 'en-US';
+  setState('listening');
+  questionRecognizer.onresult = (e)=>{
+    let interim=''; for (let i=0;i<e.results.length;i++) interim += e.results[i][0].transcript;
+    showCaption(interim);
+    if (e.results[e.results.length-1].isFinal){
+      awaitingQuestion=false;
+      sendMessage(interim);
+    }
+  };
+  questionRecognizer.onend = ()=>{
+    if (awaitingQuestion){ awaitingQuestion=false; setState('idle'); clearCaptionSoon(200); if(micEnabled) startAmbientListening(); }
+  };
+  questionRecognizer.onerror = ()=>{ awaitingQuestion=false; setState('idle'); if(micEnabled) startAmbientListening(); };
+  try{ questionRecognizer.start(); }catch(e){}
+}
+
+muteBtn.onclick = ()=>{
+  micEnabled = !micEnabled;
+  muteBtn.classList.toggle('off', !micEnabled);
+  if (!micEnabled){
+    if (ambientRecognizer) try{ ambientRecognizer.stop(); }catch(e){}
+    setState('idle');
+  } else {
+    startAmbientListening();
+  }
+};
+
+// ============================================================
+// AI CONVERSATION
+// ============================================================
+let history = [];
+function systemPrompt(){
+  return "You are WiseBot, the AI teacher presence for Wise Parrot Junior School, appearing as a glowing holographic figure on a classroom screen. "
+  + "You can discuss absolutely anything a curious student, teacher, parent, or visitor might ask — general knowledge, school subjects (Mathematics, English, "
+  + "Science, Agriculture, ICT, Social Studies, Art, Music, Physical Education), or everyday conversation — the way a warm, knowledgeable, trusted teacher would. "
+  + "Speak simply and warmly, in short sentences suitable for reading aloud by text-to-speech. Teach rather than just answering school questions: explain step "
+  + "by step, and for problems give a hint before the full answer. Praise effort and encourage participation. If asked to greet or say hello to someone by name, "
+  + "do so warmly by name. Keep replies under about 70 words. Never discuss anything unsafe, frightening, or inappropriate for children; gently redirect and "
+  + "suggest asking a teacher or parent instead.";
+}
+async function callWiseBot(userText){
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method:"POST",
+    headers:{ "Content-Type":"application/json" },
+    body: JSON.stringify({
+      model:"claude-sonnet-4-6",
+      max_tokens:1000,
+      system: systemPrompt(),
+      messages:[...history, { role:"user", content:userText }]
+    })
+  });
+  const data = await res.json();
+  const block = (data.content||[]).find(b=>b.type==='text');
+  return block ? block.text : "Sorry, I didn't quite catch that — could you say it again?";
+}
+function logToFirebase(userText, botText){
+  if (!window._wbDB) return;
+  try{
+    const { collection, addDoc, serverTimestamp } = window._wbFns;
+    addDoc(collection(window._wbDB,'wisebot_logs'), { userText, botText, at: serverTimestamp() });
+  } catch(e){}
+}
+async function sendMessage(text){
+  text = (text||'').trim();
+  if (!text){ setState('idle'); if(micEnabled) startAmbientListening(); return; }
+  isAwake = true;
+  showCaption(text);
+  history.push({ role:'user', content:text });
+  setState('thinking');
+  try{
+    const reply = await callWiseBot(text);
+    history.push({ role:'assistant', content:reply });
+    if (history.length>20) history = history.slice(-20);
+    logToFirebase(text, reply);
+    if (/great job|congrat|well done|celebrate|proud of you/i.test(reply)) celebrate();
+    if (/\b(say|tell)\s+(hi|hello|hey)\b.*\bto\b/i.test(text) || /^(good\s*morning|good\s*afternoon|good\s*evening|hello|hi there)\b/i.test(reply)) wave();
+    speak(reply, ()=>{ if(micEnabled) startAmbientListening(); });
+  } catch(e){
+    setState('idle');
+    showCaption("I had trouble thinking just now — try again in a moment.");
+    clearCaptionSoon();
+    if (micEnabled) startAmbientListening();
+  }
+}
+
+// ============================================================
+// ACTIVATION (user-gesture required for reliable mic + audio)
+// ============================================================
+activateEl.addEventListener('click', async ()=>{
+  activateEl.style.display = 'none';
+  if (!SpeechRecognitionImpl){
+    showPermError("This browser doesn't support voice recognition. Please open WiseBot in Google Chrome for the full voice experience.");
+    return;
+  }
+  try{
+    const stream = await navigator.mediaDevices.getUserMedia({ audio:true });
+    stream.getTracks().forEach(tr=>tr.stop()); // we only needed the permission grant
+    const hour = new Date().getHours();
+    const g = hour<12 ? "Good morning" : hour<17 ? "Good afternoon" : "Good evening";
+    isAwake = true;
+    speak(g + "! I'm WiseBot. Just say \"Hey WiseBot\" any time you'd like to talk.", ()=>{
+      isAwake = false;
+      startAmbientListening();
+    });
+  } catch(e){
+    showPermError("Microphone permission was blocked.<br><br>Please allow microphone access for this page (check the icon in your address bar), and make sure the page is loaded over <code>https://</code> or <code>localhost</code> — voice will not work on a plain <code>file://</code> page or unsecured <code>http://</code> connection.");
+  }
+});
+</script>
+</body>
+</html>
